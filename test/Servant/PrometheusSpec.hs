@@ -10,30 +10,26 @@ module Servant.PrometheusSpec (spec) where
 
 import           Data.Aeson
 import qualified Data.HashMap.Strict                        as H
-import           Data.List                                  (sort)
-import           Data.Monoid
+import           Data.Monoid                                ((<>))
 import           Data.Proxy
 import           Data.Text                                  as T
-import qualified Data.Text.Encoding                         as T
 import           GHC.Generics
 import           Network.HTTP.Client                        (defaultManagerSettings,
                                                              newManager)
 import           Network.Wai
 import           Network.Wai.Handler.Warp
+import           Prometheus                                 (getCounter,
+                                                             getVectorWith)
 import           Servant
 #if MIN_VERSION_servant(0,15,0)
 import           Servant.Test.ComprehensiveAPI              (comprehensiveAPI)
 #else
 import           Servant.API.Internal.Test.ComprehensiveAPI (comprehensiveAPI)
 #endif
-
 import           Servant.Client
-import           Test.Hspec
-
-import           Prometheus                                 (getCounter,
-                                                             getVectorWith)
 import           Servant.Prometheus
 
+import           Test.Hspec
 
 -- * Spec
 
@@ -41,7 +37,7 @@ spec :: Spec
 spec = describe "servant-prometheus" $ do
 
   let getEp :<|> postEp :<|> deleteEp = client testApi
-  let t q = describe (show q) $ do
+  let t q = describe (show q) $
         it "collects number of request" $
           withApp q $ \port m -> do
             mgr <- newManager defaultManagerSettings
@@ -51,26 +47,22 @@ spec = describe "servant-prometheus" $ do
             _ <- runFn $ getEp "name" Nothing
             _ <- runFn $ postEp (Greet "hi")
             _ <- runFn $ deleteEp "blah"
-            case H.lookup "hello.:name.GET" m of
+            case H.lookup (Endpoint ["hello",":name"] "GET") m of
               Nothing -> fail "Expected some value"
               Just v -> do
                 r <- getVectorWith (metersResponses v) getCounter
                 Prelude.lookup "2XX" r `shouldBe` Just 1.0
-            case H.lookup "greet.POST" m of
+            case H.lookup (Endpoint ["greet"] "POST") m of
               Nothing -> fail "Expected some value"
               Just v  -> do
                 r <- getVectorWith (metersResponses v) getCounter
                 Prelude.lookup "2XX" r `shouldBe` Just 1.0
-            case H.lookup "greet.:greetid.DELETE" m of
+            case H.lookup (Endpoint ["greet", ":greetid"] "DELETE") m of
               Nothing -> fail "Expected some value"
               Just v  -> do
                 r <- getVectorWith (metersResponses v) getCounter
                 Prelude.lookup "2XX" r `shouldBe` Just 1.0
-        it "has all endpoints" $
-          withApp q $ \_ m ->
-            sort (H.keys m) `shouldBe` sort ("unknown":Prelude.map
-                                                (\(ps,method) -> T.intercalate "." $ ps <> [T.decodeUtf8 method])
-                                                (getEndpoints testApi))
+
         -- TODO: Figure out how to test quantiles are being made with WithQuantiles
 
 
@@ -81,6 +73,12 @@ spec = describe "servant-prometheus" $ do
     let _typeLevelTest = monitorServant comprehensiveAPI undefined undefined undefined
     True `shouldBe` True
 
+  it "enumerates the parts of an API correctly" $
+    enumerateEndpoints testApi `shouldBe` [
+      Endpoint ["hello",":name"] "GET",
+      Endpoint ["greet"] "POST",
+      Endpoint ["greet",":greetid"] "DELETE"
+    ]
 
 -- * Example
 
@@ -129,7 +127,7 @@ server = helloH :<|> postGreetH :<|> deleteGreetH
 test :: Application
 test = serve testApi server
 
-withApp :: MeasureQuantiles -> (Port -> H.HashMap Text Meters -> IO a) -> IO a
+withApp :: MeasureQuantiles -> (Port -> H.HashMap Endpoint Meters -> IO a) -> IO a
 withApp qs a = do
   ms <- makeMeters testApi qs
   withApplication (return $ monitorServant testApi ms test) $ \p -> a p ms
