@@ -17,8 +17,16 @@ source-repository HEAD
   location: https://github.com/axman6/servant-prometheus
 
 library
-  exposed-modules:     Servant.Prometheus
-  other-modules:       Servant.Prometheus.Class
+  exposed-modules:    Servant.Prometheus
+  other-modules:      Servant.Prometheus.Class
+                    , Servant.Prometheus.Instrument.Class
+                    , Servant.Prometheus.Instrument.Common
+                    , Servant.Prometheus.Instrument.Inflight
+                    , Servant.Prometheus.Instrument.ResponseCodes
+                    , Servant.Prometheus.Instrument.TimeHistogram
+                    , Servant.Prometheus.Instrument.TimeQuantiles
+                    , Servant.Prometheus.Metering
+
   hs-source-dirs:      lib
   build-depends:      base                  >= 4.7      && < 4.13
                     , prometheus-client     >= 1.0
